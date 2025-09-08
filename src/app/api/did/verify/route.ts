@@ -29,6 +29,7 @@ export const runtime = 'nodejs'
 // import { DID } from 'dids'
 // import * as KeyResolver from 'key-did-resolver'
 // import { decodeJwsPayload } from 'did-jwt'
+// import { decodeJwsPayload } from 'did-jwt'
 export async function POST(req: Request) {
   try {
     const { did, jws } = await req.json()
