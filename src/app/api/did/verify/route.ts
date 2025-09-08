@@ -29,6 +29,7 @@ export const runtime = 'nodejs'
 // import { DID } from 'dids'
 // import * as KeyResolver from 'key-did-resolver'
 // import { decodeJwsPayload } from 'did-jwt'
+// test
 export async function POST(req: Request) {
   try {
     const { did, jws } = await req.json()
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
     const result = await verifier.verifyJWS(jws)
 
     // 👇 this was failing before
-    const payload = decodeJwsPayload(result.payload)
+    // const payload = decodeJwsPayload(result.payload)
 
     if (!payload?.challenge) {
       return NextResponse.json({ error: 'no challenge' }, { status: 401 })
