@@ -1,103 +1,93 @@
-import Image from "next/image";
+'use client'
+
+import { useState } from 'react'
+import { DID } from 'dids'
+import { Ed25519Provider } from 'key-did-provider-ed25519'
+import * as KeyResolver from 'key-did-resolver'
+
+// --- minimal browser signals (customize as needed)
+function getBrowserData() {
+  return {
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    platform: navigator.platform,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    screen: { w: screen.width, h: screen.height, dpr: window.devicePixelRatio },
+  }
+}
+
+// base64url helper
+function b64url(buf: ArrayBuffer) {
+  const bin = String.fromCharCode(...new Uint8Array(buf))
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+// SHA-256 hash of JSON
+async function hashBrowserData(data: any) {
+  const text = JSON.stringify(data)
+  const bytes = new TextEncoder().encode(text)
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return b64url(digest)
+}
+
+// Create/load a DID (demo: store seed in localStorage; use IndexedDB/KMS in prod)
+async function loadOrCreateDID() {
+  let seedHex = localStorage.getItem('did_seed_hex')
+  if (!seedHex) {
+    const seed = new Uint8Array(32)
+    crypto.getRandomValues(seed)
+    seedHex = Array.from(seed).map(b => b.toString(16).padStart(2, '0')).join('')
+    localStorage.setItem('did_seed_hex', seedHex)
+  }
+  const seed = new Uint8Array(seedHex.match(/.{1,2}/g)!.map(h => parseInt(h, 16)))
+  const did = new DID({
+    provider: new Ed25519Provider(seed),
+    resolver: KeyResolver.getResolver(),
+  })
+  await did.authenticate()
+  return did
+}
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [log, setLog] = useState<string>('Ready.')
+  const push = (msg: string) => setLog(prev => `${prev}\n${msg}`)
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+  async function runAttestation() {
+    try {
+      setLog('Requesting challenge...')
+      const { challenge } = await fetch('/api/did/challenges', { method: 'POST' }).then(r => r.json())
+
+      const data = getBrowserData()
+      const browserDataHash = await hashBrowserData(data)
+
+      const did = await loadOrCreateDID()
+      push(`DID: ${did.id}`)
+
+      const jws = await did.createJWS({ challenge, browserDataHash })
+
+      setLog(l => l + '\nVerifying on server...')
+      const res = await fetch('/api/did/verify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ did: did.id, jws }),
+      }).then(r => r.json())
+
+      push('Server response: ' + JSON.stringify(res, null, 2))
+    } catch (e: any) {
+      push('Error: ' + (e?.message || String(e)))
+    }
+  }
+
+  return (
+    <main style={{ maxWidth: 720, margin: '4rem auto', fontFamily: 'system-ui' }}>
+      <h1>DID Browser Attestation Demo</h1>
+      <p>This will hash minimal browser info and sign it with your DID (Ed25519).</p>
+      <button onClick={runAttestation} style={{ padding: '10px 16px', borderRadius: 8 }}>
+        Attest this browser
+      </button>
+      <pre style={{ whiteSpace: 'pre-wrap', background: '#111', color: '#0f0', padding: 16, borderRadius: 8, marginTop: 16 }}>
+        {log}
+      </pre>
+    </main>
+  )
 }
